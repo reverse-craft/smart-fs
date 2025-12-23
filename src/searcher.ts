@@ -224,7 +224,7 @@ export function searchInCode(
     query,
     contextLines = 2,
     caseSensitive = false,
-    maxMatches = 50,
+    maxMatches = 10,
     isRegex = false,
     timeoutMs = 500,
   } = options;
