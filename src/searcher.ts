@@ -64,6 +64,22 @@ export interface SearchResult {
 
 
 /**
+ * Convert double-escaped backslashes to single backslashes.
+ * Fixes MCP JSON transmission double-escaping issue.
+ * 
+ * @param str - String with potentially double-escaped backslashes
+ * @returns String with `\\` converted to `\`
+ * 
+ * @example
+ * unescapeBackslashes("for\\s*\\(") // returns "for\s*\("
+ * unescapeBackslashes("\\\\n")      // returns "\\n" (literal backslash + n)
+ * unescapeBackslashes("hello")      // returns "hello" (unchanged)
+ */
+export function unescapeBackslashes(str: string): string {
+  return str.replace(/\\\\/g, '\\');
+}
+
+/**
  * Escape all regex special characters in a string for literal matching
  * @param str - String to escape
  * @returns Escaped string safe for use in RegExp

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { defineTool } from './ToolDefinition.js';
 import { ensureBeautified } from '../beautifier.js';
 import { truncateCodeHighPerf, truncateLongLines } from '../truncator.js';
-import { searchInCode, formatSearchResult } from '../searcher.js';
+import { searchInCode, formatSearchResult, unescapeBackslashes } from '../searcher.js';
 
 /**
  * Schema for search_code_smart tool input validation
@@ -39,6 +39,9 @@ export const searchCodeSmart = defineTool({
   handler: async (params) => {
     const { file_path, query, context_lines, case_sensitive, char_limit, max_line_chars, is_regex } = params;
 
+    // Unescape double-escaped backslashes from MCP JSON transmission
+    const unescapedQuery = unescapeBackslashes(query);
+
     // Beautify the file and get source map
     const beautifyResult = await ensureBeautified(file_path);
     const { code, rawMap } = beautifyResult;
@@ -48,7 +51,7 @@ export const searchCodeSmart = defineTool({
 
     // Execute search
     const searchResult = searchInCode(truncatedCode, rawMap, {
-      query,
+      query: unescapedQuery,
       contextLines: context_lines,
       caseSensitive: case_sensitive,
       maxMatches: 50,
@@ -56,7 +59,7 @@ export const searchCodeSmart = defineTool({
     });
 
     // Format the result
-    let output = formatSearchResult(file_path, query, case_sensitive, searchResult, 50, is_regex);
+    let output = formatSearchResult(file_path, unescapedQuery, case_sensitive, searchResult, 50, is_regex);
 
     // Truncate long lines in output
     output = truncateLongLines(output, max_line_chars);
