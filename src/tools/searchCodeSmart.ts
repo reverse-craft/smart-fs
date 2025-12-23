@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { defineTool } from './ToolDefinition.js';
 import { ensureBeautified } from '../beautifier.js';
-import { truncateCodeHighPerf, truncateLongLines } from '../truncator.js';
+import { truncateLongLines } from '../truncator.js';
 import { searchInCode, formatSearchResult, unescapeBackslashes } from '../searcher.js';
 
 /**
@@ -46,11 +46,8 @@ export const searchCodeSmart = defineTool({
     const beautifyResult = await ensureBeautified(file_path);
     const { code, rawMap } = beautifyResult;
 
-    // Truncate long strings before searching
-    const truncatedCode = truncateCodeHighPerf(code, char_limit);
-
-    // Execute search
-    const searchResult = searchInCode(truncatedCode, rawMap, {
+    // Execute search on original beautified code (no truncation before search)
+    const searchResult = searchInCode(code, rawMap, {
       query: unescapedQuery,
       contextLines: context_lines,
       caseSensitive: case_sensitive,

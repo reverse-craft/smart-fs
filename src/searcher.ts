@@ -48,6 +48,8 @@ export interface SearchOptions {
   maxMatches?: number;
   /** Treat query as regex pattern (default false for literal text search) */
   isRegex?: boolean;
+  /** Timeout in milliseconds for search operation (default 500) */
+  timeoutMs?: number;
 }
 
 /**
@@ -125,22 +127,89 @@ function getOriginalPosition(
 }
 
 /**
- * Create a context line object
+ * Build line offset index using Int32Array for memory efficiency.
+ * Returns the offset array and total line count.
  */
-function createContextLine(
-  lineNumber: number,
-  content: string,
-  consumer: SourceMapConsumer
-): ContextLine {
+function buildLineOffsets(code: string): { offsets: Int32Array; totalLines: number } {
+  // Pre-allocate with estimated average line length of 40 chars
+  let capacity = Math.max(16, Math.ceil(code.length / 40));
+  let offsets = new Int32Array(capacity);
+  let lineCount = 0;
+
+  offsets[0] = 0; // First line starts at index 0
+
+  for (let i = 0; i < code.length; i++) {
+    if (code[i] === '\n') {
+      lineCount++;
+      // Dynamic resize if needed
+      if (lineCount >= capacity) {
+        capacity *= 2;
+        const newArr = new Int32Array(capacity);
+        newArr.set(offsets);
+        offsets = newArr;
+      }
+      offsets[lineCount] = i + 1; // Next line starts after \n
+    }
+  }
+
   return {
-    lineNumber,
-    content,
-    originalPosition: getOriginalPosition(consumer, lineNumber),
+    offsets: offsets.subarray(0, lineCount + 1),
+    totalLines: lineCount + 1,
   };
 }
 
 /**
- * Search for pattern in code and return matches with context
+ * Binary search to find line number (1-based) from character index.
+ */
+function getLineNumberFromIndex(offsets: Int32Array, totalLines: number, index: number): number {
+  let low = 0;
+  let high = totalLines - 1;
+
+  while (low <= high) {
+    const mid = (low + high) >>> 1;
+    if (offsets[mid] <= index) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return low; // 1-based line number
+}
+
+/**
+ * Get line content by line number (1-based) without splitting entire string.
+ */
+function getLineContent(
+  code: string,
+  offsets: Int32Array,
+  totalLines: number,
+  lineNo: number
+): string {
+  if (lineNo < 1 || lineNo > totalLines) return '';
+
+  const start = offsets[lineNo - 1];
+  let end: number;
+
+  if (lineNo < totalLines) {
+    // End is one before the next line's start (exclude \n)
+    end = offsets[lineNo] - 1;
+  } else {
+    // Last line: go to end of string
+    end = code.length;
+  }
+
+  // Handle \r\n line endings
+  if (end > start && code[end - 1] === '\r') {
+    end--;
+  }
+
+  return code.slice(start, end);
+}
+
+/**
+ * Search for pattern in code and return matches with context.
+ * Optimized version: avoids split() for large files, uses index-based iteration.
+ *
  * @param code - Beautified code to search in
  * @param rawMap - Source map for coordinate mapping
  * @param options - Search options
@@ -157,14 +226,23 @@ export function searchInCode(
     caseSensitive = false,
     maxMatches = 50,
     isRegex = false,
+    timeoutMs = 500,
   } = options;
 
-  // Create regex from query
-  const regex = createRegex(query, caseSensitive, isRegex);
+  // Build line offset index (memory efficient)
+  const { offsets, totalLines } = buildLineOffsets(code);
 
-  // Split code into lines
-  const lines = code.split('\n');
-  const totalLines = lines.length;
+  // Create regex with global + multiline flags
+  const flags = (caseSensitive ? 'g' : 'gi') + 'm';
+  const patternStr = isRegex ? unescapeBackslashes(query) : escapeRegex(query);
+
+  let regex: RegExp;
+  try {
+    regex = new RegExp(patternStr, flags);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid regex: ${message}`);
+  }
 
   // Create source map consumer
   const consumer = new SourceMapConsumer({
@@ -172,53 +250,70 @@ export function searchInCode(
     version: String(rawMap.version),
   });
 
-  // Find all matching line numbers
-  const matchingLineNumbers: number[] = [];
-  for (let i = 0; i < totalLines; i++) {
-    const line = lines[i];
-    // Reset regex lastIndex for each line
-    regex.lastIndex = 0;
-    if (regex.test(line)) {
-      matchingLineNumbers.push(i + 1); // 1-based line number
+  const matches: SearchMatch[] = [];
+  let lastMatchedLine = -1;
+  let totalMatchesFound = 0;
+  let match: RegExpExecArray | null;
+
+  // Performance protection
+  const startTime = Date.now();
+
+  // Iterate matches using exec() - no string splitting
+  while ((match = regex.exec(code)) !== null) {
+    // Prevent infinite loop on zero-width matches
+    if (match.index === regex.lastIndex) {
+      regex.lastIndex++;
+    }
+
+    const lineNumber = getLineNumberFromIndex(offsets, totalLines, match.index);
+
+    // Dedupe: skip if same line already matched
+    if (lineNumber === lastMatchedLine) {
+      continue;
+    }
+    lastMatchedLine = lineNumber;
+    totalMatchesFound++;
+
+    // Only build match details if we haven't hit the limit yet
+    if (matches.length < maxMatches) {
+      // Build context (lazy: only fetch line content when needed)
+      const contextBefore: ContextLine[] = [];
+      for (let i = Math.max(1, lineNumber - contextLines); i < lineNumber; i++) {
+        contextBefore.push({
+          lineNumber: i,
+          content: getLineContent(code, offsets, totalLines, i),
+          originalPosition: getOriginalPosition(consumer, i),
+        });
+      }
+
+      const contextAfter: ContextLine[] = [];
+      for (let i = lineNumber + 1; i <= Math.min(totalLines, lineNumber + contextLines); i++) {
+        contextAfter.push({
+          lineNumber: i,
+          content: getLineContent(code, offsets, totalLines, i),
+          originalPosition: getOriginalPosition(consumer, i),
+        });
+      }
+
+      matches.push({
+        lineNumber,
+        lineContent: getLineContent(code, offsets, totalLines, lineNumber),
+        originalPosition: getOriginalPosition(consumer, lineNumber),
+        contextBefore,
+        contextAfter,
+      });
+    }
+
+    // Timeout protection (still count but stop searching)
+    if (Date.now() - startTime > timeoutMs) {
+      break;
     }
   }
 
-  const totalMatches = matchingLineNumbers.length;
-  const truncated = totalMatches > maxMatches;
-
-  // Limit matches
-  const limitedLineNumbers = matchingLineNumbers.slice(0, maxMatches);
-
-  // Build match results
-  const matches: SearchMatch[] = limitedLineNumbers.map((lineNumber) => {
-    const lineIndex = lineNumber - 1;
-    const lineContent = lines[lineIndex];
-
-    // Collect context before
-    const contextBefore: ContextLine[] = [];
-    for (let i = Math.max(0, lineIndex - contextLines); i < lineIndex; i++) {
-      contextBefore.push(createContextLine(i + 1, lines[i], consumer));
-    }
-
-    // Collect context after
-    const contextAfter: ContextLine[] = [];
-    for (let i = lineIndex + 1; i <= Math.min(totalLines - 1, lineIndex + contextLines); i++) {
-      contextAfter.push(createContextLine(i + 1, lines[i], consumer));
-    }
-
-    return {
-      lineNumber,
-      lineContent,
-      originalPosition: getOriginalPosition(consumer, lineNumber),
-      contextBefore,
-      contextAfter,
-    };
-  });
-
   return {
     matches,
-    totalMatches,
-    truncated,
+    totalMatches: totalMatchesFound,
+    truncated: totalMatchesFound > maxMatches,
   };
 }
 

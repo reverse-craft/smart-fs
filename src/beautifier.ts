@@ -16,17 +16,16 @@ export interface SourceMap {
 }
 
 export interface BeautifyOptions {
-  /** 是否保存到原始文件同级目录 */
-  saveLocal?: boolean;
+  // Reserved for future options
 }
 
 export interface BeautifyResult {
   code: string;
   rawMap: SourceMap;
-  /** 本地保存的美化文件路径 (仅当 saveLocal=true 时存在) */
-  localPath?: string;
-  /** 本地保存的 source map 路径 (仅当 saveLocal=true 时存在) */
-  localMapPath?: string;
+  /** 本地保存的美化文件路径 */
+  localPath: string;
+  /** 本地保存的 source map 路径 */
+  localMapPath: string;
   /** 本地保存失败时的错误信息 */
   localSaveError?: string;
 }
@@ -187,7 +186,6 @@ export async function ensureBeautified(
 ): Promise<BeautifyResult> {
   // Resolve to absolute path
   const absolutePath = path.resolve(originalPath);
-  const saveLocal = options?.saveLocal ?? false;
   
   // Check if file exists
   let stats: Awaited<ReturnType<typeof fs.stat>>;
@@ -197,28 +195,26 @@ export async function ensureBeautified(
     throw new Error(`File not found: ${originalPath}`);
   }
   
-  // Get local paths for potential local save/read
+  // Get local paths for local save/read
   const localPaths = getLocalPaths(absolutePath);
   
-  // If saveLocal is true, check local cache first
-  if (saveLocal) {
-    const localCacheCheck = await isLocalCacheValid(absolutePath);
-    if (localCacheCheck.isValid) {
-      // Local cache hit - read from local files
-      try {
-        const [code, mapContent] = await Promise.all([
-          fs.readFile(localPaths.beautifiedPath, 'utf-8'),
-          fs.readFile(localPaths.mapPath, 'utf-8')
-        ]);
-        return {
-          code,
-          rawMap: JSON.parse(mapContent) as SourceMap,
-          localPath: localPaths.beautifiedPath,
-          localMapPath: localPaths.mapPath
-        };
-      } catch {
-        // If reading local cache fails, fall through to regenerate
-      }
+  // Check local cache first
+  const localCacheCheck = await isLocalCacheValid(absolutePath);
+  if (localCacheCheck.isValid) {
+    // Local cache hit - read from local files
+    try {
+      const [code, mapContent] = await Promise.all([
+        fs.readFile(localPaths.beautifiedPath, 'utf-8'),
+        fs.readFile(localPaths.mapPath, 'utf-8')
+      ]);
+      return {
+        code,
+        rawMap: JSON.parse(mapContent) as SourceMap,
+        localPath: localPaths.beautifiedPath,
+        localMapPath: localPaths.mapPath
+      };
+    } catch {
+      // If reading local cache fails, fall through to regenerate
     }
   }
   
@@ -239,13 +235,13 @@ export async function ensureBeautified(
     
     const result: BeautifyResult = {
       code,
-      rawMap: JSON.parse(mapContent) as SourceMap
+      rawMap: JSON.parse(mapContent) as SourceMap,
+      localPath: localPaths.beautifiedPath,
+      localMapPath: localPaths.mapPath
     };
     
-    // If saveLocal is true, also save to local directory
-    if (saveLocal) {
-      await saveToLocal(result, localPaths, mapContent);
-    }
+    // Also save to local directory
+    await saveToLocal(result, localPaths, mapContent);
     
     return result;
   }
@@ -289,12 +285,15 @@ export async function ensureBeautified(
     fs.writeFile(mapPath, mapText, 'utf-8')
   ]);
   
-  const result: BeautifyResult = { code, rawMap };
+  const result: BeautifyResult = {
+    code,
+    rawMap,
+    localPath: localPaths.beautifiedPath,
+    localMapPath: localPaths.mapPath
+  };
   
-  // If saveLocal is true, also save to local directory
-  if (saveLocal) {
-    await saveToLocal(result, localPaths, mapText);
-  }
+  // Save to local directory
+  await saveToLocal(result, localPaths, mapText);
   
   return result;
 }
