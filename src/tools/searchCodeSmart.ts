@@ -14,6 +14,7 @@ export const SearchCodeSmartInputSchema = z.object({
   case_sensitive: z.boolean().default(false).describe('Case sensitive search'),
   char_limit: z.number().int().min(50).default(300).describe('Character limit for string truncation'),
   max_line_chars: z.number().int().min(80).default(500).describe('Maximum characters per line'),
+  is_regex: z.boolean().default(false).describe('Treat query as regex pattern (default: false for literal text search)'),
 });
 
 /**
@@ -33,9 +34,10 @@ export const searchCodeSmart = defineTool({
     case_sensitive: z.boolean().default(false).describe('Case sensitive search'),
     char_limit: z.number().int().min(50).default(300).describe('Character limit for string truncation'),
     max_line_chars: z.number().int().min(80).default(500).describe('Maximum characters per line'),
+    is_regex: z.boolean().default(false).describe('Treat query as regex pattern (default: false for literal text search)'),
   },
   handler: async (params) => {
-    const { file_path, query, context_lines, case_sensitive, char_limit, max_line_chars } = params;
+    const { file_path, query, context_lines, case_sensitive, char_limit, max_line_chars, is_regex } = params;
 
     // Beautify the file and get source map
     const beautifyResult = await ensureBeautified(file_path);
@@ -50,10 +52,11 @@ export const searchCodeSmart = defineTool({
       contextLines: context_lines,
       caseSensitive: case_sensitive,
       maxMatches: 50,
+      isRegex: is_regex,
     });
 
     // Format the result
-    let output = formatSearchResult(file_path, query, case_sensitive, searchResult, 50);
+    let output = formatSearchResult(file_path, query, case_sensitive, searchResult, 50, is_regex);
 
     // Truncate long lines in output
     output = truncateLongLines(output, max_line_chars);

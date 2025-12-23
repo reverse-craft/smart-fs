@@ -46,6 +46,8 @@ export interface SearchOptions {
   caseSensitive?: boolean;
   /** Maximum matches to return (default 50) */
   maxMatches?: number;
+  /** Treat query as regex pattern (default false for literal text search) */
+  isRegex?: boolean;
 }
 
 /**
@@ -62,16 +64,27 @@ export interface SearchResult {
 
 
 /**
+ * Escape all regex special characters in a string for literal matching
+ * @param str - String to escape
+ * @returns Escaped string safe for use in RegExp
+ */
+export function escapeRegex(str: string): string {
+  return str.replace(/[()[\]{}.*+?^$|\\]/g, '\\$&');
+}
+
+/**
  * Create regex from query string with error handling
  * @param query - Regex pattern or text
  * @param caseSensitive - Whether to be case sensitive
+ * @param isRegex - Whether to treat query as regex (default false)
  * @returns Created RegExp
  * @throws Error if regex is invalid
  */
-export function createRegex(query: string, caseSensitive: boolean = false): RegExp {
+export function createRegex(query: string, caseSensitive: boolean = false, isRegex: boolean = false): RegExp {
   try {
     const flags = caseSensitive ? 'g' : 'gi';
-    return new RegExp(query, flags);
+    const pattern = isRegex ? query : escapeRegex(query);
+    return new RegExp(pattern, flags);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid regex: ${message}`);
@@ -127,10 +140,11 @@ export function searchInCode(
     contextLines = 2,
     caseSensitive = false,
     maxMatches = 50,
+    isRegex = false,
   } = options;
 
   // Create regex from query
-  const regex = createRegex(query, caseSensitive);
+  const regex = createRegex(query, caseSensitive, isRegex);
 
   // Split code into lines
   const lines = code.split('\n');
@@ -209,6 +223,7 @@ export function formatSourcePosition(line: number | null, column: number | null)
  * @param caseSensitive - Whether search was case sensitive
  * @param result - Search result
  * @param maxMatches - Maximum matches limit
+ * @param isRegex - Whether query was treated as regex pattern
  * @returns Formatted output string
  */
 export function formatSearchResult(
@@ -216,7 +231,8 @@ export function formatSearchResult(
   query: string,
   caseSensitive: boolean,
   result: SearchResult,
-  maxMatches: number = 50
+  maxMatches: number = 50,
+  isRegex: boolean = false
 ): string {
   const { matches, totalMatches, truncated } = result;
 
@@ -224,8 +240,9 @@ export function formatSearchResult(
 
   // Header
   const caseInfo = caseSensitive ? 'case-sensitive' : 'case-insensitive';
+  const modeInfo = isRegex ? 'regex' : 'literal';
   outputParts.push(`FILE: ${filePath}`);
-  outputParts.push(`QUERY: "${query}" (${caseInfo})`);
+  outputParts.push(`QUERY: "${query}" (${modeInfo}, ${caseInfo})`);
 
   if (totalMatches === 0) {
     outputParts.push('MATCHES: No matches found');

@@ -32,14 +32,25 @@ describe('createRegex', () => {
     expect(regex.flags).toContain('g');
   });
 
-  it('should throw error for invalid regex', () => {
-    expect(() => createRegex('[invalid')).toThrow('Invalid regex');
+  it('should throw error for invalid regex when isRegex is true', () => {
+    expect(() => createRegex('[invalid', false, true)).toThrow('Invalid regex');
   });
 
-  it('should handle special regex characters', () => {
-    const regex = createRegex('console\\.log');
+  it('should not throw for invalid regex when isRegex is false (default)', () => {
+    // With isRegex=false (default), special chars are escaped, so no error
+    expect(() => createRegex('[invalid')).not.toThrow();
+  });
+
+  it('should handle special regex characters when isRegex is true', () => {
+    const regex = createRegex('console\\.log', false, true);
     expect(regex.test('console.log("test")')).toBe(true);
     expect(regex.test('consolexlog')).toBe(false);
+  });
+
+  it('should escape special regex characters when isRegex is false (default)', () => {
+    const regex = createRegex('console.log');
+    expect(regex.test('console.log("test")')).toBe(true);
+    expect(regex.test('consolexlog')).toBe(false); // dot is escaped, so doesn't match 'x'
   });
 });
 
@@ -59,7 +70,7 @@ function process(data) {
 
   it('should find matches with correct line numbers', () => {
     const result = searchInCode(sampleCode, sourceMap, {
-      query: 'console\\.log',
+      query: 'console.log',
     });
 
     expect(result.matches.length).toBe(2);
@@ -69,7 +80,7 @@ function process(data) {
 
   it('should collect context lines before and after match', () => {
     const result = searchInCode(sampleCode, sourceMap, {
-      query: 'console\\.log',
+      query: 'console.log',
       contextLines: 2,
     });
 
@@ -100,7 +111,7 @@ function process(data) {
 
   it('should respect maxMatches limit', () => {
     const result = searchInCode(sampleCode, sourceMap, {
-      query: 'console\\.log',
+      query: 'console.log',
       maxMatches: 1,
     });
 
