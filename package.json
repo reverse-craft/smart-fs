@@ -44,6 +44,11 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@babel/core": "^7.28.5",
+    "@babel/generator": "^7.28.5",
+    "@babel/parser": "^7.28.5",
+    "@babel/traverse": "^7.28.5",
+    "@babel/types": "^7.28.5",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "esbuild": "^0.27.2",
     "estree-walker": "^3.0.3",
@@ -54,6 +59,9 @@
     "zod": "^4.2.1"
   },
   "devDependencies": {
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__generator": "^7.27.0",
+    "@types/babel__traverse": "^7.28.0",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^22.15.29",
     "fast-check": "^4.5.2",
