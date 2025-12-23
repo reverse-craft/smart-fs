@@ -1,25 +1,48 @@
 {
-  "name": "jsvmp-smart-fs",
+  "name": "@reverse-craft/smart-fs",
   "version": "1.0.0",
-  "description": "MCP server for intelligent JavaScript code reading with beautification and source mapping",
+  "description": "MCP server for AI-assisted JavaScript reverse engineering - beautifies minified code and truncates long strings to prevent context overflow",
   "type": "module",
   "main": "dist/server.js",
   "bin": {
-    "jsvmp-smart-fs": "./dist/server.js"
+    "smart-fs": "./dist/server.js"
   },
   "scripts": {
     "build": "node build.js",
     "build:types": "tsc --emitDeclarationOnly",
     "start": "node dist/server.js",
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "javascript",
+    "reverse-engineering",
+    "deobfuscation",
     "beautifier",
-    "source-map"
+    "source-map",
+    "ai",
+    "llm",
+    "context-window"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reverse-craft/smart-fs"
+  },
+  "homepage": "https://github.com/reverse-craft/smart-fs#readme",
+  "bugs": {
+    "url": "https://github.com/reverse-craft/smart-fs/issues"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
     "esbuild": "^0.27.2",
