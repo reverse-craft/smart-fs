@@ -11,7 +11,7 @@ await esbuild.build({
   banner: {
     js: '#!/usr/bin/env node'
   },
-  external: []  // 不排除任何依赖，全部打包
+  packages: 'external'  // 所有 node_modules 依赖都作为外部依赖
 });
 
 console.log('Build complete!');
