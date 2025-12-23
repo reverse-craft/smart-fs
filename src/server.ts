@@ -5,7 +5,7 @@ import { tools } from './tools/index.js';
 
 // Create MCP Server instance
 const server = new McpServer({
-  name: 'jsvmp-smart-fs',
+  name: 'smart-fs',
   version: '1.0.0',
 });
 
@@ -65,7 +65,7 @@ for (const tool of tools) {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('JSVMP Smart FS MCP Server running on stdio');
+  console.error('Smart FS MCP Server running on stdio');
 }
 
 main().catch((error) => {

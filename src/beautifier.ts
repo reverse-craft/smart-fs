@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
-const TEMP_DIR = path.join(os.tmpdir(), 'jsvmp-mcp-cache');
+const TEMP_DIR = path.join(os.tmpdir(), 'smart-fs-mcp-cache');
 
 export interface SourceMap {
   version: number;

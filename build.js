@@ -11,7 +11,10 @@ await esbuild.build({
   banner: {
     js: '#!/usr/bin/env node'
   },
-  packages: 'external'  // 所有 node_modules 依赖都作为外部依赖
+  // babel 相关包也作为外部依赖，但需要特殊处理 ESM/CJS 兼容
+  packages: 'external',
+  // 将 CommonJS 模块的 require 转换为可在 ESM 中使用的形式
+  mainFields: ['module', 'main'],
 });
 
 console.log('Build complete!');

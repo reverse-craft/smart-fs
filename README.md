@@ -4,7 +4,7 @@ MCP server for AI-assisted JavaScript reverse engineering. Beautifies minified/o
 
 ## Why?
 
-When reverse engineering JavaScript (especially JSVMP or heavily obfuscated code), AI assistants face two problems:
+When reverse engineering JavaScript (minified or obfuscated code), AI assistants face two problems:
 
 1. **Minified code is unreadable** - Single-line code with no formatting
 2. **Long strings overflow context** - Base64 blobs, encrypted data, and huge arrays waste precious tokens
@@ -91,7 +91,7 @@ The `[Src L:C]` column shows the original position in the minified file - use th
 
 ## Use Cases
 
-- Reverse engineering JSVMP-protected code
+- Reverse engineering obfuscated/minified JavaScript
 - Analyzing obfuscated JavaScript
 - Understanding minified third-party libraries
 - Setting breakpoints in beautified code while debugging original

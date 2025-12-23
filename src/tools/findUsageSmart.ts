@@ -45,7 +45,7 @@ export const findUsageSmart = defineTool({
 
     // Analyze bindings using full code (not truncated) for accurate AST analysis
     // When line is specified, increase maxReferences to 15 for targeted searches
-    const analysisResult = analyzeBindings(code, rawMap, identifier, {
+    const analysisResult = await analyzeBindings(code, rawMap, identifier, {
       maxReferences: line ? 15 : 10,
       targetLine: line,
     });

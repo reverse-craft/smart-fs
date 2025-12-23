@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
-const TEST_DIR = path.join(os.tmpdir(), 'jsvmp-test-fixtures');
+const TEST_DIR = path.join(os.tmpdir(), 'smart-fs-test-fixtures');
 
 describe('ensureBeautified', () => {
   beforeAll(async () => {

@@ -11,7 +11,7 @@ import {
 } from '../transformer.js';
 import { ApplyCustomTransformInputSchema } from '../tools/index.js';
 
-const TEST_DIR = path.join(os.tmpdir(), 'jsvmp-transformer-test');
+const TEST_DIR = path.join(os.tmpdir(), 'smart-fs-transformer-test');
 const FIXTURES_DIR = path.join(TEST_DIR, 'fixtures');
 const SCRIPTS_DIR = path.join(TEST_DIR, 'scripts');
 

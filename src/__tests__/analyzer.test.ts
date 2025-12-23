@@ -49,13 +49,13 @@ describe('parseCode', () => {
 });
 
 describe('analyzeBindings', () => {
-  it('should find binding definition and references', () => {
+  it('should find binding definition and references', async () => {
     const code = `const x = 1;
 console.log(x);
 const y = x + 1;`;
     const sourceMap = createTestSourceMap(3);
 
-    const result = analyzeBindings(code, sourceMap, 'x');
+    const result = await analyzeBindings(code, sourceMap, 'x');
 
     expect(result.identifier).toBe('x');
     expect(result.bindings.length).toBe(1);
@@ -66,7 +66,7 @@ const y = x + 1;`;
     expect(binding.references.length).toBe(2);
   });
 
-  it('should separate bindings in different scopes', () => {
+  it('should separate bindings in different scopes', async () => {
     const code = `function outer() {
   const x = 1;
   console.log(x);
@@ -77,13 +77,13 @@ function inner() {
 }`;
     const sourceMap = createTestSourceMap(8);
 
-    const result = analyzeBindings(code, sourceMap, 'x');
+    const result = await analyzeBindings(code, sourceMap, 'x');
 
     expect(result.bindings.length).toBe(2);
     expect(result.bindings[0].scopeUid).not.toBe(result.bindings[1].scopeUid);
   });
 
-  it('should identify different binding kinds', () => {
+  it('should identify different binding kinds', async () => {
     const code = `var a = 1;
 let b = 2;
 const c = 3;
@@ -92,10 +92,10 @@ function fn(d) {
 }`;
     const sourceMap = createTestSourceMap(6);
 
-    const resultA = analyzeBindings(code, sourceMap, 'a');
-    const resultB = analyzeBindings(code, sourceMap, 'b');
-    const resultC = analyzeBindings(code, sourceMap, 'c');
-    const resultD = analyzeBindings(code, sourceMap, 'd');
+    const resultA = await analyzeBindings(code, sourceMap, 'a');
+    const resultB = await analyzeBindings(code, sourceMap, 'b');
+    const resultC = await analyzeBindings(code, sourceMap, 'c');
+    const resultD = await analyzeBindings(code, sourceMap, 'd');
 
     expect(resultA.bindings[0].kind).toBe('var');
     expect(resultB.bindings[0].kind).toBe('let');
@@ -103,35 +103,35 @@ function fn(d) {
     expect(resultD.bindings[0].kind).toBe('param');
   });
 
-  it('should return empty bindings for non-existent identifier', () => {
+  it('should return empty bindings for non-existent identifier', async () => {
     const code = 'const x = 1;';
     const sourceMap = createTestSourceMap(1);
 
-    const result = analyzeBindings(code, sourceMap, 'nonexistent');
+    const result = await analyzeBindings(code, sourceMap, 'nonexistent');
 
     expect(result.bindings.length).toBe(0);
   });
 
-  it('should limit references per binding', () => {
+  it('should limit references per binding', async () => {
     const code = `const x = 1;
 console.log(x, x, x, x, x);
 console.log(x, x, x, x, x);
 console.log(x, x, x);`;
     const sourceMap = createTestSourceMap(4);
 
-    const result = analyzeBindings(code, sourceMap, 'x', { maxReferences: 5 });
+    const result = await analyzeBindings(code, sourceMap, 'x', { maxReferences: 5 });
 
     const binding = result.bindings[0];
     expect(binding.references.length).toBe(5);
     expect(binding.totalReferences).toBeGreaterThan(5);
   });
 
-  it('should include line content in location info', () => {
+  it('should include line content in location info', async () => {
     const code = `const myVar = 42;
 console.log(myVar);`;
     const sourceMap = createTestSourceMap(2);
 
-    const result = analyzeBindings(code, sourceMap, 'myVar');
+    const result = await analyzeBindings(code, sourceMap, 'myVar');
 
     const binding = result.bindings[0];
     expect(binding.definition.lineContent).toContain('const myVar = 42');

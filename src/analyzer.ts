@@ -5,14 +5,24 @@ import type { Identifier } from '@babel/types';
 import type { SourceMap } from './beautifier.js';
 
 // Dynamic import for babel traverse to handle ESM/CJS interop
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const traverse = require('@babel/traverse').default as (
+type TraverseFn = (
   parent: Parameters<typeof import('@babel/traverse').default>[0],
   opts?: Parameters<typeof import('@babel/traverse').default>[1],
   scope?: Parameters<typeof import('@babel/traverse').default>[2],
   state?: Parameters<typeof import('@babel/traverse').default>[3],
   parentPath?: Parameters<typeof import('@babel/traverse').default>[4]
 ) => void;
+
+let traverse: TraverseFn | null = null;
+
+async function getTraverse(): Promise<TraverseFn> {
+  if (!traverse) {
+    const mod = await import('@babel/traverse');
+    // Handle both ESM default export and CJS module.exports
+    traverse = (mod.default?.default ?? mod.default) as TraverseFn;
+  }
+  return traverse;
+}
 
 /**
  * Original position from source map
@@ -166,12 +176,12 @@ export interface AnalyzeOptions {
  * @param options - Analysis options
  * @returns Analysis result with all bindings
  */
-export function analyzeBindings(
+export async function analyzeBindings(
   code: string,
   rawMap: SourceMap,
   identifier: string,
   options?: AnalyzeOptions
-): AnalysisResult {
+): Promise<AnalysisResult> {
   const targetLine = options?.targetLine;
   const isTargeted = targetLine !== undefined;
   // Use 15 max references for targeted searches, 10 for regular searches
@@ -192,6 +202,9 @@ export function analyzeBindings(
   // Collect all bindings for the identifier
   const bindings: BindingInfo[] = [];
   const processedScopes = new Set<number>();
+  
+  // Get traverse function
+  const traverse = await getTraverse();
   
   try {
     traverse(ast, {

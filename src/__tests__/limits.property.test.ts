@@ -146,19 +146,19 @@ describe('Result Limits Property Tests', () => {
    * **Validates: Requirements 6.1, 6.2**
    */
   describe('Property 6: Find Usage Reference Limit', () => {
-    it('should limit references to maxReferences', () => {
+    it('should limit references to maxReferences', async () => {
       // Generate code with many references to a variable
       const refCountArb = fc.integer({ min: 15, max: 50 });
       const maxRefsArb = fc.integer({ min: 1, max: 10 });
 
-      fc.assert(
-        fc.property(refCountArb, maxRefsArb, (refCount, maxRefs) => {
+      await fc.assert(
+        fc.asyncProperty(refCountArb, maxRefsArb, async (refCount, maxRefs) => {
           // Create code with one definition and many references
           const refs = Array(refCount).fill('console.log(x);');
           const code = `const x = 1;\n${refs.join('\n')}`;
           const sourceMap = createTestSourceMap(refCount + 1);
 
-          const result = analyzeBindings(code, sourceMap, 'x', {
+          const result = await analyzeBindings(code, sourceMap, 'x', {
             maxReferences: maxRefs,
           });
 
@@ -179,17 +179,17 @@ describe('Result Limits Property Tests', () => {
       );
     });
 
-    it('should not limit when references are within limit', () => {
+    it('should not limit when references are within limit', async () => {
       const refCountArb = fc.integer({ min: 1, max: 5 });
       const maxRefsArb = fc.integer({ min: 10, max: 20 });
 
-      fc.assert(
-        fc.property(refCountArb, maxRefsArb, (refCount, maxRefs) => {
+      await fc.assert(
+        fc.asyncProperty(refCountArb, maxRefsArb, async (refCount, maxRefs) => {
           const refs = Array(refCount).fill('console.log(x);');
           const code = `const x = 1;\n${refs.join('\n')}`;
           const sourceMap = createTestSourceMap(refCount + 1);
 
-          const result = analyzeBindings(code, sourceMap, 'x', {
+          const result = await analyzeBindings(code, sourceMap, 'x', {
             maxReferences: maxRefs,
           });
 
@@ -207,18 +207,18 @@ describe('Result Limits Property Tests', () => {
       );
     });
 
-    it('should preserve reference order when limiting', () => {
-      fc.assert(
-        fc.property(
+    it('should preserve reference order when limiting', async () => {
+      await fc.assert(
+        fc.asyncProperty(
           fc.integer({ min: 20, max: 30 }),
           fc.integer({ min: 5, max: 10 }),
-          (refCount, maxRefs) => {
+          async (refCount, maxRefs) => {
             // Create code where each reference is on a different line
             const refs = Array(refCount).fill(0).map((_, i) => `console.log(x); // ref ${i}`);
             const code = `const x = 1;\n${refs.join('\n')}`;
             const sourceMap = createTestSourceMap(refCount + 1);
 
-            const result = analyzeBindings(code, sourceMap, 'x', {
+            const result = await analyzeBindings(code, sourceMap, 'x', {
               maxReferences: maxRefs,
             });
 
