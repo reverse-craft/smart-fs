@@ -1,6 +1,6 @@
 import { SourceMapConsumer } from 'source-map-js';
 import { parse, ParserOptions } from '@babel/parser';
-import type { NodePath, Visitor } from '@babel/traverse';
+import type { NodePath } from '@babel/traverse';
 import type { Identifier } from '@babel/types';
 import type { SourceMap } from './beautifier.js';
 
@@ -50,6 +50,8 @@ export interface BindingInfo {
   references: LocationInfo[];
   /** Total reference count (before limiting) */
   totalReferences: number;
+  /** The location that matched the target line (if targeted search) */
+  hitLocation?: LocationInfo;
 }
 
 /**
@@ -60,6 +62,10 @@ export interface AnalysisResult {
   bindings: BindingInfo[];
   /** The identifier that was searched */
   identifier: string;
+  /** Whether this was a targeted (line-specific) search */
+  isTargeted: boolean;
+  /** The target line if specified */
+  targetLine?: number;
 }
 
 
@@ -146,6 +152,8 @@ function createLocationInfo(
 export interface AnalyzeOptions {
   /** Maximum references to return per binding (default 10) */
   maxReferences?: number;
+  /** Target line number for precise binding identification (1-based) */
+  targetLine?: number;
 }
 
 /**
@@ -164,7 +172,10 @@ export function analyzeBindings(
   identifier: string,
   options?: AnalyzeOptions
 ): AnalysisResult {
-  const maxReferences = options?.maxReferences ?? 10;
+  const targetLine = options?.targetLine;
+  const isTargeted = targetLine !== undefined;
+  // Use 15 max references for targeted searches, 10 for regular searches
+  const maxReferences = options?.maxReferences ?? (isTargeted ? 15 : 10);
   
   // Parse the code
   const ast = parseCode(code);
@@ -188,6 +199,14 @@ export function analyzeBindings(
         // Only process if this is the identifier we're looking for
         if (path.node.name !== identifier) {
           return;
+        }
+        
+        // For targeted search, check if this identifier is at the target line
+        if (isTargeted) {
+          const nodeLoc = path.node.loc;
+          if (!nodeLoc || nodeLoc.start.line !== targetLine) {
+            return;
+          }
         }
         
         // Get the binding for this identifier
@@ -241,13 +260,31 @@ export function analyzeBindings(
         // Limit references
         const limitedReferences = allReferences.slice(0, maxReferences);
         
+        // Create hit location for targeted search
+        let hitLocation: LocationInfo | undefined;
+        if (isTargeted) {
+          const nodeLoc = path.node.loc!;
+          hitLocation = createLocationInfo(
+            nodeLoc.start.line,
+            nodeLoc.start.column,
+            lines,
+            consumer
+          );
+        }
+        
         bindings.push({
           scopeUid,
           kind: binding.kind,
           definition,
           references: limitedReferences,
           totalReferences,
+          hitLocation,
         });
+        
+        // For targeted search, stop after finding the first matching binding
+        if (isTargeted) {
+          path.stop();
+        }
       },
     });
   } catch (err) {
@@ -258,6 +295,8 @@ export function analyzeBindings(
   return {
     bindings,
     identifier,
+    isTargeted,
+    targetLine,
   };
 }
 
@@ -273,6 +312,13 @@ export function formatSourcePosition(line: number | null, column: number | null)
 }
 
 /**
+ * Check if two locations match (same line and column)
+ */
+function locationsMatch(loc1: LocationInfo, loc2: LocationInfo): boolean {
+  return loc1.line === loc2.line && loc1.column === loc2.column;
+}
+
+/**
  * Format analysis result for output
  * @param filePath - Path to the file
  * @param result - Analysis result
@@ -284,7 +330,7 @@ export function formatAnalysisResult(
   result: AnalysisResult,
   maxReferences: number = 10
 ): string {
-  const { bindings, identifier } = result;
+  const { bindings, identifier, isTargeted, targetLine } = result;
   
   const outputParts: string[] = [];
   
@@ -292,34 +338,55 @@ export function formatAnalysisResult(
   outputParts.push(`FILE: ${filePath}`);
   outputParts.push(`IDENTIFIER: "${identifier}"`);
   
+  // Handle no bindings found
   if (bindings.length === 0) {
-    outputParts.push('BINDINGS: No definitions or references found');
+    if (isTargeted && targetLine !== undefined) {
+      // Descriptive message for targeted search with no results
+      outputParts.push(`BINDINGS: No binding found for "${identifier}" at line ${targetLine}`);
+      outputParts.push(`The variable may be global, externally defined, or not present at this line.`);
+    } else {
+      outputParts.push('BINDINGS: No definitions or references found');
+    }
     return outputParts.join('\n');
   }
   
-  const scopeInfo = bindings.length > 1 ? ' (in different scopes)' : '';
-  outputParts.push(`BINDINGS: ${bindings.length} found${scopeInfo}`);
+  // Display "Targeted Scope" header when isTargeted is true
+  if (isTargeted) {
+    outputParts.push(`BINDINGS: 1 found (Targeted Scope at line ${targetLine})`);
+  } else {
+    const scopeInfo = bindings.length > 1 ? ' (in different scopes)' : '';
+    outputParts.push(`BINDINGS: ${bindings.length} found${scopeInfo}`);
+  }
   outputParts.push('-'.repeat(85));
   
   // Format each binding
   for (let i = 0; i < bindings.length; i++) {
     const binding = bindings[i];
     
-    outputParts.push(`=== Scope #${i + 1} (${binding.kind}) ===`);
+    // Use "Targeted Scope" label for targeted searches
+    if (isTargeted) {
+      outputParts.push(`=== Targeted Scope (${binding.kind}) ===`);
+    } else {
+      outputParts.push(`=== Scope #${i + 1} (${binding.kind}) ===`);
+    }
     
-    // Format definition
-    outputParts.push('📍 Definition:');
+    // Format definition - check if definition is the hit location
+    const defIsHit = isTargeted && binding.hitLocation && 
+      locationsMatch(binding.definition, binding.hitLocation);
+    const defPrefix = defIsHit ? '📍 Definition (hit):' : '📍 Definition:';
+    outputParts.push(defPrefix);
+    
     const defSrcPos = formatSourcePosition(
       binding.definition.originalPosition.line,
       binding.definition.originalPosition.column
     );
     const defSrcPosPadded = defSrcPos ? `Src ${defSrcPos}` : '';
+    const defMarker = defIsHit ? ' ◀── hit' : '';
     outputParts.push(
-      `   ${binding.definition.line} | [${defSrcPosPadded.padEnd(14, ' ')}] | ${binding.definition.lineContent}`
+      `   ${binding.definition.line} | [${defSrcPosPadded.padEnd(14, ' ')}] | ${binding.definition.lineContent}${defMarker}`
     );
     
     // Format references
-    const refCount = binding.references.length;
     const totalRefs = binding.totalReferences;
     
     if (totalRefs === 0) {
@@ -328,13 +395,18 @@ export function formatAnalysisResult(
       outputParts.push(`🔎 References (${totalRefs}):`);
       
       for (const ref of binding.references) {
+        // Check if this reference is the hit location
+        const refIsHit = isTargeted && binding.hitLocation && 
+          locationsMatch(ref, binding.hitLocation);
+        
         const refSrcPos = formatSourcePosition(
           ref.originalPosition.line,
           ref.originalPosition.column
         );
         const refSrcPosPadded = refSrcPos ? `Src ${refSrcPos}` : '';
+        const refMarker = refIsHit ? ' ◀── hit' : '';
         outputParts.push(
-          `   ${ref.line} | [${refSrcPosPadded.padEnd(14, ' ')}] | ${ref.lineContent}`
+          `   ${ref.line} | [${refSrcPosPadded.padEnd(14, ' ')}] | ${ref.lineContent}${refMarker}`
         );
       }
       

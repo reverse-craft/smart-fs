@@ -10,6 +10,9 @@ import { analyzeBindings, formatAnalysisResult } from '../analyzer.js';
 export const FindUsageSmartInputSchema = z.object({
   file_path: z.string().describe('Path to the JavaScript file'),
   identifier: z.string().describe('Variable or function name to find'),
+  line: z.number().int().positive().optional().describe(
+    'The line number where you see this variable. HIGHLY RECOMMENDED for precision in obfuscated code.'
+  ),
   char_limit: z.number().int().min(50).default(300).describe('Character limit for string truncation'),
   max_line_chars: z.number().int().min(80).default(500).describe('Maximum characters per line'),
 });
@@ -27,19 +30,24 @@ export const findUsageSmart = defineTool({
   schema: {
     file_path: z.string().describe('Path to the JavaScript file'),
     identifier: z.string().describe('Variable or function name to find'),
+    line: z.number().int().positive().optional().describe(
+      'The line number where you see this variable. HIGHLY RECOMMENDED for precision in obfuscated code.'
+    ),
     char_limit: z.number().int().min(50).default(300).describe('Character limit for string truncation'),
     max_line_chars: z.number().int().min(80).default(500).describe('Maximum characters per line'),
   },
   handler: async (params) => {
-    const { file_path, identifier, char_limit, max_line_chars } = params;
+    const { file_path, identifier, line, char_limit, max_line_chars } = params;
 
     // Beautify the file and get source map
     const beautifyResult = await ensureBeautified(file_path);
     const { code, rawMap } = beautifyResult;
 
     // Analyze bindings using full code (not truncated) for accurate AST analysis
+    // When line is specified, increase maxReferences to 15 for targeted searches
     const analysisResult = analyzeBindings(code, rawMap, identifier, {
-      maxReferences: 10,
+      maxReferences: line ? 15 : 10,
+      targetLine: line,
     });
 
     // Truncate the code for display purposes
@@ -64,7 +72,7 @@ export const findUsageSmart = defineTool({
     }
 
     // Format the result
-    let output = formatAnalysisResult(file_path, analysisResult, 10);
+    let output = formatAnalysisResult(file_path, analysisResult, line ? 15 : 10);
 
     // Truncate long lines in output
     output = truncateLongLines(output, max_line_chars);
