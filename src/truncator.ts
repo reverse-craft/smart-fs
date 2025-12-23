@@ -98,3 +98,38 @@ export function truncateCodeHighPerf(sourceCode: string, limit: number = 200, pr
 
   return magicString.toString();
 }
+
+/**
+ * Truncate lines that exceed the maximum character limit
+ * @param code - Source code to process
+ * @param maxLineChars - Maximum characters per line (default 500)
+ * @param previewRatio - Ratio of line to show at start/end (default 0.2)
+ * @returns Code with truncated long lines
+ */
+export function truncateLongLines(
+  code: string,
+  maxLineChars: number = 500,
+  previewRatio: number = 0.2
+): string {
+  if (!code) {
+    return code;
+  }
+
+  const lines = code.split('\n');
+  const previewLength = Math.floor(maxLineChars * previewRatio);
+
+  const processedLines = lines.map((line) => {
+    if (line.length <= maxLineChars) {
+      return line;
+    }
+
+    const start = line.slice(0, previewLength);
+    const end = line.slice(-previewLength);
+    const truncatedChars = line.length - previewLength * 2;
+    const marker = `...[LINE TRUNCATED ${truncatedChars} CHARS]...`;
+
+    return `${start}${marker}${end}`;
+  });
+
+  return processedLines.join('\n');
+}

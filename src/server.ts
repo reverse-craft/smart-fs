@@ -7,7 +7,7 @@ import {
 import { z } from 'zod';
 import { SourceMapConsumer } from 'source-map-js';
 import { ensureBeautified } from './beautifier.js';
-import { truncateCodeHighPerf } from './truncator.js';
+import { truncateCodeHighPerf, truncateLongLines } from './truncator.js';
 
 // Tool input schema using Zod
 const ReadCodeSmartInputSchema = z.object({
@@ -15,6 +15,8 @@ const ReadCodeSmartInputSchema = z.object({
   start_line: z.number().int().min(1).describe('Start line number (1-based)'),
   end_line: z.number().int().min(1).describe('End line number (1-based)'),
   char_limit: z.number().int().min(50).default(300).describe('Character limit for string truncation'),
+  max_line_chars: z.number().int().min(80).default(500).describe('Maximum characters per line'),
+  save_local: z.boolean().optional().default(false).describe('Save beautified file to the same directory as the original file'),
 });
 
 type ReadCodeSmartInput = z.infer<typeof ReadCodeSmartInputSchema>;
@@ -77,16 +79,20 @@ function formatPaginationHint(nextStartLine: number): string {
  * Process read_code_smart request
  */
 async function handleReadCodeSmart(input: ReadCodeSmartInput): Promise<string> {
-  const { file_path, start_line, end_line, char_limit } = input;
+  const { file_path, start_line, end_line, char_limit, max_line_chars, save_local } = input;
 
   // Beautify the file and get source map
-  const { code, rawMap } = await ensureBeautified(file_path);
+  const beautifyResult = await ensureBeautified(file_path, { saveLocal: save_local });
+  const { code, rawMap, localPath, localMapPath, localSaveError } = beautifyResult;
 
   // Truncate long strings
   const truncatedCode = truncateCodeHighPerf(code, char_limit);
 
+  // Truncate long lines
+  const lineTruncatedCode = truncateLongLines(truncatedCode, max_line_chars);
+
   // Split into lines
-  const lines = truncatedCode.split('\n');
+  const lines = lineTruncatedCode.split('\n');
   const totalLines = lines.length;
 
   // Validate line range
@@ -108,6 +114,20 @@ async function handleReadCodeSmart(input: ReadCodeSmartInput): Promise<string> {
 
   // Add header
   outputParts.push(formatHeader(file_path, effectiveStartLine, effectiveEndLine, totalLines));
+
+  // Add local save info if applicable
+  if (save_local) {
+    if (localPath) {
+      outputParts.push(`LOCAL: ${localPath}`);
+      if (localMapPath) {
+        outputParts.push(`LOCAL_MAP: ${localMapPath}`);
+      }
+    }
+    if (localSaveError) {
+      outputParts.push(`LOCAL_SAVE_ERROR: ${localSaveError}`);
+    }
+    outputParts.push('-'.repeat(85));
+  }
 
   // Calculate max line number width for alignment
   const maxLineNumWidth = String(effectiveEndLine).length;
@@ -144,7 +164,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         name: 'read_code_smart',
         description:
           'Read and beautify minified/obfuscated JavaScript code with source map coordinates. ' +
-          'Returns formatted code with original file positions for setting breakpoints.',
+          'Returns formatted code with original file positions for setting breakpoints. ' +
+          'Optionally saves the beautified file locally alongside the original file.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -164,6 +185,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'number',
               description: 'Character limit for string truncation (default: 300)',
               default: 300,
+            },
+            max_line_chars: {
+              type: 'number',
+              description: 'Maximum characters per line. Lines exceeding this limit will be truncated with a marker showing the number of truncated characters (default: 500, minimum: 80)',
+              default: 500,
+            },
+            save_local: {
+              type: 'boolean',
+              description: 'When true, saves the beautified file and source map to the same directory as the original file. The beautified file will be named {filename}.beautified.js and the source map {filename}.beautified.js.map (default: false)',
+              default: false,
             },
           },
           required: ['file_path', 'start_line', 'end_line'],
