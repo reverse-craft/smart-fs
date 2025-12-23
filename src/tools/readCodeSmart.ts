@@ -19,10 +19,8 @@ function formatSourcePosition(line: number | null, column: number | null): strin
  */
 function formatHeader(filePath: string, startLine: number, endLine: number, totalLines: number): string {
   return [
-    `FILE: ${filePath}`,
-    `VIEW: Auto-beautified (Lines ${startLine}-${endLine} of ${totalLines})`,
-    `INFO: [Src L:C] = Location in original minified file (for Chrome Breakpoints)`,
-    '-'.repeat(85),
+    `${filePath} (${startLine}-${endLine}/${totalLines})`,
+    `Src=original position for breakpoints`,
   ].join('\n');
 }
 
@@ -31,9 +29,8 @@ function formatHeader(filePath: string, startLine: number, endLine: number, tota
  */
 function formatCodeLine(lineNumber: number, sourcePos: string, code: string, maxLineNumWidth: number): string {
   const lineNumStr = String(lineNumber).padStart(maxLineNumWidth, ' ');
-  const srcPosStr = sourcePos ? `Src ${sourcePos}` : '';
-  const srcPosPadded = srcPosStr.padEnd(14, ' ');
-  return `${lineNumStr} | [${srcPosPadded}] | ${code}`;
+  const srcPos = sourcePos ? sourcePos.padEnd(10, ' ') : '          ';
+  return `${lineNumStr} ${srcPos} ${code}`;
 }
 
 /**
@@ -103,13 +100,12 @@ export const readCodeSmart = defineTool({
       if (localPath) {
         outputParts.push(`LOCAL: ${localPath}`);
         if (localMapPath) {
-          outputParts.push(`LOCAL_MAP: ${localMapPath}`);
+          outputParts.push(`MAP: ${localMapPath}`);
         }
       }
       if (localSaveError) {
-        outputParts.push(`LOCAL_SAVE_ERROR: ${localSaveError}`);
+        outputParts.push(`ERROR: ${localSaveError}`);
       }
-      outputParts.push('-'.repeat(85));
     }
 
     // Calculate max line number width for alignment
