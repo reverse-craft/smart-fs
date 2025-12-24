@@ -48,7 +48,7 @@ Or if installed globally:
 
 ## Usage
 
-The server provides three tools:
+The server provides four tools:
 
 ### 1. read_code_smart
 
@@ -138,6 +138,50 @@ Matches: 3
   43 L1:1080    }
   44 L1:1100    
 ```
+
+### 4. apply_custom_transform
+
+Apply a custom Babel transformation to deobfuscate JavaScript code.
+
+#### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `target_file` | string | ✓ | - | Path to the JavaScript file to transform |
+| `script_path` | string | ✓ | - | Path to a JS file exporting a Babel Plugin function |
+| `output_suffix` | string | | _deob | Suffix for output file name |
+
+#### Example Plugin Script
+
+```javascript
+// deob-plugin.js
+module.exports = function() {
+  return {
+    visitor: {
+      // Evaluate constant binary expressions: "a" + "b" -> "ab"
+      BinaryExpression(path) {
+        const { left, right, operator } = path.node;
+        if (operator === '+' && 
+            left.type === 'StringLiteral' && 
+            right.type === 'StringLiteral') {
+          path.replaceWith({ type: 'StringLiteral', value: left.value + right.value });
+        }
+      }
+    }
+  };
+};
+```
+
+#### Example Output
+
+```
+Transform completed successfully!
+
+Output file: /path/to/obfuscated_deob.js
+Source map: /path/to/obfuscated_deob.js.map
+```
+
+The output file includes a cascaded source map that traces back to the original minified file, so breakpoints still work in Chrome DevTools.
 
 The `Src L:C` shows the original position in the minified file - use these coordinates to set breakpoints in Chrome DevTools.
 
