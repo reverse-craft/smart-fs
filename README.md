@@ -48,7 +48,7 @@ Or if installed globally:
 
 ## Usage
 
-The server provides four tools:
+The server provides five tools:
 
 ### 1. read_code_smart
 
@@ -182,6 +182,43 @@ Source map: /path/to/obfuscated_deob.js.map
 ```
 
 The output file includes a cascaded source map that traces back to the original minified file, so breakpoints still work in Chrome DevTools.
+
+### 5. ai_find_jsvmp_dispatcher
+
+AI-powered tool to find JSVMP (JavaScript Virtual Machine Protection) dispatcher patterns in code using LLM analysis. Requires `OPENAI_API_KEY` environment variable.
+
+#### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `file_path` | string | ✓ | - | Path to JavaScript file |
+| `start_line` | number | ✓ | - | Start line (1-based) |
+| `end_line` | number | ✓ | - | End line (1-based) |
+| `char_limit` | number | | 300 | Max string length before truncation |
+
+#### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | ✓ | - | OpenAI API key |
+| `OPENAI_BASE_URL` | | `https://api.openai.com/v1` | API base URL |
+| `OPENAI_MODEL` | | `gpt-4o-mini` | Model name |
+
+#### Example Output
+
+```
+=== JSVMP Dispatcher Detection Result ===
+File: /path/to/obfuscated.js (100-500)
+
+Summary: 检测到 JSVMP 保护代码，包含主分发器和虚拟栈操作
+
+Detected Regions:
+[ultra_high] Lines 150-300: Switch Dispatcher
+  大型 switch 语句，包含 50+ case 分支，典型的 JSVMP 分发器结构
+
+[high] Lines 120-140: Stack Operation
+  数组操作模式，疑似虚拟栈实现
+```
 
 The `Src L:C` shows the original position in the minified file - use these coordinates to set breakpoints in Chrome DevTools.
 

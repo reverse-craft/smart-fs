@@ -7,6 +7,7 @@ import { readCodeSmart } from './readCodeSmart.js';
 import { applyCustomTransform, ApplyCustomTransformInputSchema } from './applyCustomTransform.js';
 import { searchCodeSmart, SearchCodeSmartInputSchema } from './searchCodeSmart.js';
 import { findUsageSmart, FindUsageSmartInputSchema } from './findUsageSmart.js';
+import { aiFindJsvmpDispatcher } from './aiFindJsvmpDispatcher.js';
 
 /**
  * Array of all available MCP tool definitions.
@@ -20,6 +21,7 @@ export const tools = [
   applyCustomTransform,
   searchCodeSmart,
   findUsageSmart,
+  aiFindJsvmpDispatcher,
 ] as const;
 
 // Re-export ToolDefinition interface and defineTool helper
