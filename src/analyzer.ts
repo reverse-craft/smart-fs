@@ -325,6 +325,16 @@ export function formatSourcePosition(line: number | null, column: number | null)
 }
 
 /**
+ * Format a single code line with line number, source coordinates, and content
+ * Matches the format used in read_code_smart
+ */
+function formatCodeLine(lineNumber: number, sourcePos: string, code: string, prefix: string = '  '): string {
+  const lineNumStr = String(lineNumber).padStart(5, ' ');
+  const srcPosPadded = sourcePos ? sourcePos.padEnd(10, ' ') : '          ';
+  return `${prefix}${lineNumStr} ${srcPosPadded} ${code}`;
+}
+
+/**
  * Check if two locations match (same line and column)
  */
 function locationsMatch(loc1: LocationInfo, loc2: LocationInfo): boolean {
@@ -347,30 +357,29 @@ export function formatAnalysisResult(
   
   const outputParts: string[] = [];
   
-  // Header
-  outputParts.push(`FILE: ${filePath}`);
-  outputParts.push(`IDENTIFIER: "${identifier}"`);
+  // Header - matches read_code_smart format
+  outputParts.push(`${filePath}`);
+  outputParts.push(`Identifier="${identifier}"`);
+  outputParts.push(`Src=original position for breakpoints`);
   
   // Handle no bindings found
   if (bindings.length === 0) {
     if (isTargeted && targetLine !== undefined) {
-      // Descriptive message for targeted search with no results
-      outputParts.push(`BINDINGS: No binding found for "${identifier}" at line ${targetLine}`);
+      outputParts.push(`Bindings: None at line ${targetLine}`);
       outputParts.push(`The variable may be global, externally defined, or not present at this line.`);
     } else {
-      outputParts.push('BINDINGS: No definitions or references found');
+      outputParts.push('Bindings: None');
     }
     return outputParts.join('\n');
   }
   
   // Display "Targeted Scope" header when isTargeted is true
   if (isTargeted) {
-    outputParts.push(`BINDINGS: 1 found (Targeted Scope at line ${targetLine})`);
+    outputParts.push(`Bindings: 1 (Targeted at line ${targetLine})`);
   } else {
-    const scopeInfo = bindings.length > 1 ? ' (in different scopes)' : '';
-    outputParts.push(`BINDINGS: ${bindings.length} found${scopeInfo}`);
+    const scopeInfo = bindings.length > 1 ? ' (different scopes)' : '';
+    outputParts.push(`Bindings: ${bindings.length}${scopeInfo}`);
   }
-  outputParts.push('-'.repeat(85));
   
   // Format each binding
   for (let i = 0; i < bindings.length; i++) {
@@ -378,9 +387,9 @@ export function formatAnalysisResult(
     
     // Use "Targeted Scope" label for targeted searches
     if (isTargeted) {
-      outputParts.push(`=== Targeted Scope (${binding.kind}) ===`);
+      outputParts.push(`--- Targeted Scope (${binding.kind}) ---`);
     } else {
-      outputParts.push(`=== Scope #${i + 1} (${binding.kind}) ===`);
+      outputParts.push(`--- Scope #${i + 1} (${binding.kind}) ---`);
     }
     
     // Format definition - check if definition is the hit location
@@ -393,11 +402,8 @@ export function formatAnalysisResult(
       binding.definition.originalPosition.line,
       binding.definition.originalPosition.column
     );
-    const defSrcPosPadded = defSrcPos ? `Src ${defSrcPos}` : '';
     const defMarker = defIsHit ? ' ◀── hit' : '';
-    outputParts.push(
-      `   ${binding.definition.line} | [${defSrcPosPadded.padEnd(14, ' ')}] | ${binding.definition.lineContent}${defMarker}`
-    );
+    outputParts.push(formatCodeLine(binding.definition.line, defSrcPos, binding.definition.lineContent + defMarker, '  '));
     
     // Format references
     const totalRefs = binding.totalReferences;
@@ -416,21 +422,16 @@ export function formatAnalysisResult(
           ref.originalPosition.line,
           ref.originalPosition.column
         );
-        const refSrcPosPadded = refSrcPos ? `Src ${refSrcPos}` : '';
         const refMarker = refIsHit ? ' ◀── hit' : '';
-        outputParts.push(
-          `   ${ref.line} | [${refSrcPosPadded.padEnd(14, ' ')}] | ${ref.lineContent}${refMarker}`
-        );
+        outputParts.push(formatCodeLine(ref.line, refSrcPos, ref.lineContent + refMarker, '  '));
       }
       
       // Add truncation message if references were limited
       if (totalRefs > maxReferences) {
         const remaining = totalRefs - maxReferences;
-        outputParts.push(`   ... (${remaining} more references not shown)`);
+        outputParts.push(`  ... (${remaining} more references not shown)`);
       }
     }
-    
-    outputParts.push(''); // Empty line between bindings
   }
   
   return outputParts.join('\n');

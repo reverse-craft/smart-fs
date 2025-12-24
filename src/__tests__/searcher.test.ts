@@ -178,7 +178,7 @@ line5`;
     };
 
     const output = formatSearchResult('/test/file.js', 'query', false, result);
-    expect(output).toContain('No matches found');
+    expect(output).toContain('Matches: None');
   });
 
   it('should format matches with context', () => {
@@ -189,9 +189,9 @@ line5`;
 
     const output = formatSearchResult('/test/file.js', 'match', false, searchResult);
     
-    expect(output).toContain('FILE: /test/file.js');
-    expect(output).toContain('QUERY: "match"');
-    expect(output).toContain('MATCHES: 1 found');
+    expect(output).toContain('/test/file.js');
+    expect(output).toContain('Query="match"');
+    expect(output).toContain('Matches: 1');
     expect(output).toContain('>>'); // Match line indicator
   });
 

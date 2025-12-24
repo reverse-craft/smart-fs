@@ -328,6 +328,16 @@ export function formatSourcePosition(line: number | null, column: number | null)
 }
 
 /**
+ * Format a single code line with line number, source coordinates, and content
+ * Matches the format used in read_code_smart
+ */
+function formatCodeLine(lineNumber: number, sourcePos: string, code: string, maxLineNumWidth: number, prefix: string = '  '): string {
+  const lineNumStr = String(lineNumber).padStart(maxLineNumWidth, ' ');
+  const srcPosPadded = sourcePos ? sourcePos.padEnd(10, ' ') : '          ';
+  return `${prefix}${lineNumStr} ${srcPosPadded} ${code}`;
+}
+
+/**
  * Format search result for output
  * @param filePath - Path to the file
  * @param query - Search query
@@ -349,26 +359,26 @@ export function formatSearchResult(
 
   const outputParts: string[] = [];
 
-  // Header
+  // Header - matches read_code_smart format
   const caseInfo = caseSensitive ? 'case-sensitive' : 'case-insensitive';
   const modeInfo = isRegex ? 'regex' : 'literal';
-  outputParts.push(`FILE: ${filePath}`);
-  outputParts.push(`QUERY: "${query}" (${modeInfo}, ${caseInfo})`);
+  outputParts.push(`${filePath}`);
+  outputParts.push(`Query="${query}" (${modeInfo}, ${caseInfo})`);
+  outputParts.push(`Src=original position for breakpoints`);
 
   if (totalMatches === 0) {
-    outputParts.push('MATCHES: No matches found');
+    outputParts.push('Matches: None');
     return outputParts.join('\n');
   }
 
   const matchInfo = truncated
-    ? `MATCHES: ${totalMatches} found (showing first ${maxMatches})`
-    : `MATCHES: ${totalMatches} found`;
+    ? `Matches: ${totalMatches} (showing first ${maxMatches})`
+    : `Matches: ${totalMatches}`;
   outputParts.push(matchInfo);
-  outputParts.push('-'.repeat(85));
 
   // Format each match
   for (const match of matches) {
-    outputParts.push(`--- Match at Line ${match.lineNumber} ---`);
+    outputParts.push(`--- Line ${match.lineNumber} ---`);
 
     // Calculate max line number width for alignment
     const allLineNumbers = [
@@ -380,32 +390,24 @@ export function formatSearchResult(
 
     // Format context before
     for (const ctx of match.contextBefore) {
-      const lineNumStr = String(ctx.lineNumber).padStart(maxLineNumWidth, ' ');
       const srcPos = formatSourcePosition(ctx.originalPosition.line, ctx.originalPosition.column);
-      const srcPosPadded = srcPos ? `Src ${srcPos}` : '';
-      outputParts.push(`    ${lineNumStr} | [${srcPosPadded.padEnd(14, ' ')}] | ${ctx.content}`);
+      outputParts.push(formatCodeLine(ctx.lineNumber, srcPos, ctx.content, maxLineNumWidth, '  '));
     }
 
     // Format match line with >> prefix
-    const matchLineNumStr = String(match.lineNumber).padStart(maxLineNumWidth, ' ');
     const matchSrcPos = formatSourcePosition(match.originalPosition.line, match.originalPosition.column);
-    const matchSrcPosPadded = matchSrcPos ? `Src ${matchSrcPos}` : '';
-    outputParts.push(`>>  ${matchLineNumStr} | [${matchSrcPosPadded.padEnd(14, ' ')}] | ${match.lineContent}`);
+    outputParts.push(formatCodeLine(match.lineNumber, matchSrcPos, match.lineContent, maxLineNumWidth, '>>'));
 
     // Format context after
     for (const ctx of match.contextAfter) {
-      const lineNumStr = String(ctx.lineNumber).padStart(maxLineNumWidth, ' ');
       const srcPos = formatSourcePosition(ctx.originalPosition.line, ctx.originalPosition.column);
-      const srcPosPadded = srcPos ? `Src ${srcPos}` : '';
-      outputParts.push(`    ${lineNumStr} | [${srcPosPadded.padEnd(14, ' ')}] | ${ctx.content}`);
+      outputParts.push(formatCodeLine(ctx.lineNumber, srcPos, ctx.content, maxLineNumWidth, '  '));
     }
-
-    outputParts.push(''); // Empty line between matches
   }
 
   // Add truncation message if needed
   if (truncated) {
-    outputParts.push(`... (${totalMatches - maxMatches} more matches not shown)`);
+    outputParts.push(`\n... (${totalMatches - maxMatches} more matches not shown)`);
   }
 
   return outputParts.join('\n');

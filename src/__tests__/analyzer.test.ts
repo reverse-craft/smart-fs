@@ -155,10 +155,11 @@ describe('formatAnalysisResult', () => {
     const result = {
       bindings: [],
       identifier: 'test',
+      isTargeted: false,
     };
 
     const output = formatAnalysisResult('/test/file.js', result);
-    expect(output).toContain('No definitions or references found');
+    expect(output).toContain('Bindings: None');
   });
 
   it('should format binding with definition and references', () => {
@@ -181,13 +182,14 @@ describe('formatAnalysisResult', () => {
         totalReferences: 1,
       }],
       identifier: 'x',
+      isTargeted: false,
     };
 
     const output = formatAnalysisResult('/test/file.js', result);
     
-    expect(output).toContain('FILE: /test/file.js');
-    expect(output).toContain('IDENTIFIER: "x"');
-    expect(output).toContain('BINDINGS: 1 found');
+    expect(output).toContain('/test/file.js');
+    expect(output).toContain('Identifier="x"');
+    expect(output).toContain('Bindings: 1');
     expect(output).toContain('Scope #1 (const)');
     expect(output).toContain('📍 Definition:');
     expect(output).toContain('🔎 References');
@@ -213,6 +215,7 @@ describe('formatAnalysisResult', () => {
         totalReferences: 15,
       }],
       identifier: 'x',
+      isTargeted: false,
     };
 
     const output = formatAnalysisResult('/test/file.js', result, 10);
