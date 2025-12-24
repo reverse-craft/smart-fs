@@ -29,7 +29,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/reverse-craft/smart-fs"
+    "url": "git+https://github.com/reverse-craft/smart-fs.git"
   },
   "homepage": "https://github.com/reverse-craft/smart-fs#readme",
   "bugs": {
