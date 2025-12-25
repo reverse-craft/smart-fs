@@ -253,6 +253,11 @@ export async function applyCustomTransform(
   const beautifyResult = await ensureBeautified(absoluteTargetPath);
   const { code: beautifiedCode, rawMap: inputSourceMap } = beautifyResult;
   
+  // Ensure source map is available (required for cascade)
+  if (!inputSourceMap) {
+    throw new Error(`Cannot transform ${targetFile}: Source map generation failed during beautification`);
+  }
+  
   // Run Babel transform with source map cascade
   const transformResult = runBabelTransform(
     beautifiedCode,
