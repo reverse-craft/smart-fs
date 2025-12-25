@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { detectLanguage, getLanguageInfo, type SupportedLanguage } from './languageDetector.js';
 
 const TEMP_DIR = path.join(os.tmpdir(), 'smart-fs-mcp-cache');
 
@@ -16,18 +17,24 @@ export interface SourceMap {
 }
 
 export interface BeautifyOptions {
-  // Reserved for future options
+  /** Override auto-detected language */
+  language?: SupportedLanguage;
+  /** Save beautified file locally (default: true for JS/TS) */
+  saveLocal?: boolean;
 }
 
 export interface BeautifyResult {
   code: string;
-  rawMap: SourceMap;
+  /** Source map (null for languages that don't support it) */
+  rawMap: SourceMap | null;
   /** 本地保存的美化文件路径 */
   localPath: string;
   /** 本地保存的 source map 路径 */
   localMapPath: string;
   /** 本地保存失败时的错误信息 */
   localSaveError?: string;
+  /** Whether fallback mode was used */
+  usedFallback: boolean;
 }
 
 /**
@@ -175,10 +182,186 @@ export async function isLocalCacheValid(originalPath: string): Promise<LocalCach
 }
 
 /**
- * Beautify JavaScript file and generate Source Map
+ * Beautify JSON content with proper indentation
+ * @param content - JSON string to beautify
+ * @returns Object with beautified JSON string and error flag
+ */
+export function beautifyJson(content: string): { code: string; parseFailed: boolean } {
+  try {
+    const parsed = JSON.parse(content);
+    return { code: JSON.stringify(parsed, null, 2), parseFailed: false };
+  } catch {
+    // If parsing fails, return original content (Requirement 8.5)
+    return { code: content, parseFailed: true };
+  }
+}
+
+/**
+ * Simple HTML/XML beautification with indentation
+ * This is a basic formatter that handles common cases
+ * @param content - HTML/XML string to beautify
+ * @returns Beautified HTML/XML string, or original content if formatting fails
+ */
+export function beautifyHtml(content: string): string {
+  try {
+    // Simple regex-based formatting for HTML/XML
+    // This handles basic indentation without a full parser
+    
+    let formatted = '';
+    let indent = 0;
+    const indentStr = '  '; // 2 spaces
+    
+    // Normalize line endings and split by tags
+    const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
+    // Split content into tokens (tags and text)
+    const tokens = normalized.split(/(<[^>]+>)/g).filter(token => token.trim() !== '');
+    
+    for (const token of tokens) {
+      const trimmedToken = token.trim();
+      
+      if (!trimmedToken) continue;
+      
+      // Check if it's a tag
+      if (trimmedToken.startsWith('<')) {
+        // Self-closing tag or declaration
+        if (trimmedToken.startsWith('<!') || 
+            trimmedToken.startsWith('<?') || 
+            trimmedToken.endsWith('/>')) {
+          formatted += indentStr.repeat(indent) + trimmedToken + '\n';
+        }
+        // Closing tag
+        else if (trimmedToken.startsWith('</')) {
+          indent = Math.max(0, indent - 1);
+          formatted += indentStr.repeat(indent) + trimmedToken + '\n';
+        }
+        // Opening tag
+        else {
+          formatted += indentStr.repeat(indent) + trimmedToken + '\n';
+          indent++;
+        }
+      } else {
+        // Text content - preserve it with current indentation
+        const textLines = trimmedToken.split('\n');
+        for (const line of textLines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine) {
+            formatted += indentStr.repeat(indent) + trimmedLine + '\n';
+          }
+        }
+      }
+    }
+    
+    return formatted.trimEnd();
+  } catch {
+    // If formatting fails, return original content (Requirement 8.5)
+    return content;
+  }
+}
+
+/**
+ * Simple CSS beautification with indentation
+ * @param content - CSS string to beautify
+ * @returns Beautified CSS string, or original content if formatting fails
+ */
+export function beautifyCss(content: string): string {
+  try {
+    // Simple regex-based formatting for CSS
+    let formatted = content;
+    
+    // Normalize line endings
+    formatted = formatted.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
+    // Add newline after { and before }
+    formatted = formatted.replace(/\{/g, ' {\n');
+    formatted = formatted.replace(/\}/g, '\n}\n');
+    
+    // Add newline after ;
+    formatted = formatted.replace(/;/g, ';\n');
+    
+    // Clean up multiple newlines
+    formatted = formatted.replace(/\n\s*\n/g, '\n');
+    
+    // Add indentation
+    const lines = formatted.split('\n');
+    let indent = 0;
+    const indentStr = '  ';
+    const result: string[] = [];
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      
+      // Decrease indent before closing brace
+      if (trimmed.startsWith('}')) {
+        indent = Math.max(0, indent - 1);
+      }
+      
+      result.push(indentStr.repeat(indent) + trimmed);
+      
+      // Increase indent after opening brace
+      if (trimmed.endsWith('{')) {
+        indent++;
+      }
+    }
+    
+    return result.join('\n');
+  } catch {
+    // If formatting fails, return original content (Requirement 8.5)
+    return content;
+  }
+}
+
+/**
+ * Beautify code string directly based on language
+ * @param code - Source code to beautify
+ * @param language - Language type
+ * @returns Beautified code (or original if fallback mode)
+ */
+export function beautifyCode(
+  code: string,
+  language: SupportedLanguage
+): { code: string; usedFallback: boolean } {
+  const langInfo = getLanguageInfo(language);
+  
+  // If language doesn't support beautification, return original (fallback mode)
+  if (!langInfo.supportsBeautify) {
+    return { code, usedFallback: true };
+  }
+  
+  switch (language) {
+    case 'json': {
+      const result = beautifyJson(code);
+      // If JSON parsing failed, use fallback mode (Requirement 8.4)
+      return { code: result.code, usedFallback: result.parseFailed };
+    }
+    case 'html':
+    case 'xml':
+      return { code: beautifyHtml(code), usedFallback: false };
+    case 'css':
+      return { code: beautifyCss(code), usedFallback: false };
+    case 'javascript':
+    case 'typescript':
+      // JS/TS beautification requires async esbuild, handled separately
+      // This function is for sync beautification of simple formats
+      return { code, usedFallback: true };
+    default:
+      // Unknown language - fallback mode
+      return { code, usedFallback: true };
+  }
+}
+
+/**
+ * Beautify file based on detected or specified language
+ * - JS/TS: Use esbuild for formatting with source map
+ * - JSON: Use JSON.stringify with indentation
+ * - HTML/XML: Use simple indentation-based formatting
+ * - CSS: Use simple formatting
+ * - Unknown: Return original (fallback mode)
+ * 
  * @param originalPath - Original file path
- * @param options - Optional beautify options (saveLocal, etc.)
- * @returns Beautified code and Source Map
+ * @param options - Optional beautify options (language, saveLocal, etc.)
+ * @returns Beautified code and Source Map (null for non-JS/TS)
  */
 export async function ensureBeautified(
   originalPath: string,
@@ -195,9 +378,31 @@ export async function ensureBeautified(
     throw new Error(`File not found: ${originalPath}`);
   }
   
+  // Detect or use specified language
+  const langInfo = options?.language 
+    ? getLanguageInfo(options.language)
+    : detectLanguage(absolutePath);
+  
+  const language = langInfo.language;
+  
   // Get local paths for local save/read
   const localPaths = getLocalPaths(absolutePath);
   
+  // Handle non-JS/TS languages (no caching, no source map)
+  if (language !== 'javascript' && language !== 'typescript') {
+    const content = await fs.readFile(absolutePath, 'utf-8');
+    const beautified = beautifyCode(content, language);
+    
+    return {
+      code: beautified.code,
+      rawMap: null, // No source map for non-JS/TS
+      localPath: localPaths.beautifiedPath,
+      localMapPath: localPaths.mapPath,
+      usedFallback: beautified.usedFallback,
+    };
+  }
+  
+  // JS/TS processing with esbuild and caching
   // Check local cache first
   const localCacheCheck = await isLocalCacheValid(absolutePath);
   if (localCacheCheck.isValid) {
@@ -211,7 +416,8 @@ export async function ensureBeautified(
         code,
         rawMap: JSON.parse(mapContent) as SourceMap,
         localPath: localPaths.beautifiedPath,
-        localMapPath: localPaths.mapPath
+        localMapPath: localPaths.mapPath,
+        usedFallback: false,
       };
     } catch {
       // If reading local cache fails, fall through to regenerate
@@ -237,7 +443,8 @@ export async function ensureBeautified(
       code,
       rawMap: JSON.parse(mapContent) as SourceMap,
       localPath: localPaths.beautifiedPath,
-      localMapPath: localPaths.mapPath
+      localMapPath: localPaths.mapPath,
+      usedFallback: false,
     };
     
     // Also save to local directory
@@ -263,8 +470,15 @@ export async function ensureBeautified(
       treeShaking: false,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Esbuild processing failed: ${message}`);
+    // If esbuild fails, fall back to returning original content
+    const content = await fs.readFile(absolutePath, 'utf-8');
+    return {
+      code: content,
+      rawMap: null,
+      localPath: localPaths.beautifiedPath,
+      localMapPath: localPaths.mapPath,
+      usedFallback: true,
+    };
   }
   
   // Extract code and source map from result
@@ -272,7 +486,15 @@ export async function ensureBeautified(
   const mapFile = esbuildResult.outputFiles?.find(f => f.path.endsWith('.map'));
   
   if (!codeFile || !mapFile) {
-    throw new Error('Esbuild processing failed: Missing output files');
+    // If output files are missing, fall back to original content
+    const content = await fs.readFile(absolutePath, 'utf-8');
+    return {
+      code: content,
+      rawMap: null,
+      localPath: localPaths.beautifiedPath,
+      localMapPath: localPaths.mapPath,
+      usedFallback: true,
+    };
   }
   
   const code = codeFile.text;
@@ -289,7 +511,8 @@ export async function ensureBeautified(
     code,
     rawMap,
     localPath: localPaths.beautifiedPath,
-    localMapPath: localPaths.mapPath
+    localMapPath: localPaths.mapPath,
+    usedFallback: false,
   };
   
   // Save to local directory
