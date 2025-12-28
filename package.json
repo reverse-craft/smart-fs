@@ -1,6 +1,6 @@
 {
   "name": "@reverse-craft/smart-fs",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Core file processing library for code beautification, truncation, and analysis - supports multiple languages with AST-based and fallback processing",
   "type": "module",
   "main": "dist/index.js",
