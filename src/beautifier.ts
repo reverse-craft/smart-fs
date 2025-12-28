@@ -1,12 +1,12 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { parse } from '@babel/parser';
-import * as babelGenerator from '@babel/generator';
+import _babelGenerator from '@babel/generator';
 import { detectLanguage, getLanguageInfo, type SupportedLanguage } from './languageDetector.js';
 
 // Handle both ESM default export and CommonJS module.exports
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const generate = (babelGenerator as any).default || babelGenerator;
+const generate = (_babelGenerator as any).default ?? _babelGenerator;
 
 export interface SourceMap {
   version: number;
