@@ -440,15 +440,10 @@ export async function ensureBeautified(
       };
       mapText = JSON.stringify(rawMap);
     }
-  } catch {
-    // If Babel fails, fall back to returning original content
-    return {
-      code: content,
-      rawMap: null,
-      localPath: localPaths.beautifiedPath,
-      localMapPath: localPaths.mapPath,
-      usedFallback: true,
-    };
+  } catch (err) {
+    // Babel 失败时直接抛出错误，不允许静默回退
+    const error = err as Error;
+    throw new Error(`Babel beautification failed for ${originalPath}: ${error.message || String(err)}`);
   }
   
   const result: BeautifyResult = {
