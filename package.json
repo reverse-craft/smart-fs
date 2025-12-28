@@ -51,7 +51,6 @@
     "@babel/parser": "^7.28.5",
     "@babel/traverse": "^7.28.5",
     "@babel/types": "^7.28.5",
-    "esbuild": "^0.27.2",
     "estree-walker": "^3.0.3",
     "fs-extra": "^11.3.3",
     "magic-string": "^0.30.21",

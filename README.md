@@ -166,7 +166,7 @@ Bindings: 1 (Targeted at line 10)
 
 ## How It Works
 
-1. **Beautification**: Uses esbuild to format minified code and generate source maps
+1. **Beautification**: Uses Babel parser and generator to format minified code with source maps (preserves all variable names exactly)
 2. **Truncation**: Parses AST with meriyah, truncates long strings while preserving newlines
 3. **Mapping**: Uses source-map-js to map beautified lines back to original positions
 

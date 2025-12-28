@@ -1,7 +1,12 @@
-import * as esbuild from 'esbuild';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { parse } from '@babel/parser';
+import * as babelGenerator from '@babel/generator';
 import { detectLanguage, getLanguageInfo, type SupportedLanguage } from './languageDetector.js';
+
+// Handle both ESM default export and CommonJS module.exports
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const generate = (babelGenerator as any).default || babelGenerator;
 
 export interface SourceMap {
   version: number;
@@ -296,7 +301,7 @@ export function beautifyCode(
       return { code: beautifyCss(code), usedFallback: false };
     case 'javascript':
     case 'typescript':
-      // JS/TS beautification requires async esbuild, handled separately
+      // JS/TS beautification requires async Babel, handled separately
       // This function is for sync beautification of simple formats
       return { code, usedFallback: true };
     default:
@@ -307,7 +312,7 @@ export function beautifyCode(
 
 /**
  * Beautify file based on detected or specified language
- * - JS/TS: Use esbuild for formatting with source map
+ * - JS/TS: Use Babel for formatting with source map (preserves all variable names)
  * - JSON: Use JSON.stringify with indentation
  * - HTML/XML: Use simple indentation-based formatting
  * - CSS: Use simple formatting
@@ -355,7 +360,7 @@ export async function ensureBeautified(
     };
   }
   
-  // JS/TS processing with esbuild and caching
+  // JS/TS processing with Babel and caching
   // Check local cache first (same directory as original file)
   const localCacheCheck = await isLocalCacheValid(absolutePath);
   if (localCacheCheck.isValid) {
@@ -377,25 +382,66 @@ export async function ensureBeautified(
     }
   }
   
-  // Cache miss - beautify with Esbuild
-  let esbuildResult: esbuild.BuildResult;
+  // Cache miss - beautify with Babel
+  const content = await fs.readFile(absolutePath, 'utf-8');
+  
+  let code: string;
+  let rawMap: SourceMap | null = null;
+  let mapText: string | null = null;
+  
   try {
-    esbuildResult = await esbuild.build({
-      entryPoints: [absolutePath],
-      bundle: false,
-      write: false,
-      format: 'esm',
-      sourcemap: 'external',
-      sourcesContent: false,
-      outfile: 'out.js',
-      // Beautify settings
-      minify: false,
-      keepNames: true,
-      treeShaking: false,
+    // Parse with Babel - use permissive settings for potentially malformed code
+    const ast = parse(content, {
+      sourceType: 'unambiguous', // Auto-detect module vs script
+      plugins: [
+        'jsx',
+        'typescript',
+        'decorators-legacy',
+        'classProperties',
+        'classPrivateProperties',
+        'classPrivateMethods',
+        'exportDefaultFrom',
+        'exportNamespaceFrom',
+        'dynamicImport',
+        'nullishCoalescingOperator',
+        'optionalChaining',
+        'bigInt',
+        'topLevelAwait',
+      ],
+      errorRecovery: true, // Continue parsing even with errors
     });
+    
+    // Generate beautified code with source map
+    const generated = generate(ast, {
+      sourceMaps: true,
+      sourceFileName: path.basename(absolutePath),
+      // Beautify settings - preserve original structure
+      retainLines: false,
+      compact: false,
+      minified: false,
+      comments: true,
+      // Use consistent formatting
+      jsescOption: {
+        minimal: true,
+      },
+    }, content);
+    
+    code = generated.code;
+    
+    // Convert Babel source map to our SourceMap format
+    if (generated.map) {
+      rawMap = {
+        version: generated.map.version,
+        sources: generated.map.sources,
+        names: generated.map.names,
+        mappings: generated.map.mappings,
+        file: generated.map.file,
+        sourceRoot: generated.map.sourceRoot,
+      };
+      mapText = JSON.stringify(rawMap);
+    }
   } catch {
-    // If esbuild fails, fall back to returning original content
-    const content = await fs.readFile(absolutePath, 'utf-8');
+    // If Babel fails, fall back to returning original content
     return {
       code: content,
       rawMap: null,
@@ -404,26 +450,6 @@ export async function ensureBeautified(
       usedFallback: true,
     };
   }
-  
-  // Extract code and source map from result
-  const codeFile = esbuildResult.outputFiles?.find(f => f.path.endsWith('.js'));
-  const mapFile = esbuildResult.outputFiles?.find(f => f.path.endsWith('.map'));
-  
-  if (!codeFile || !mapFile) {
-    // If output files are missing, fall back to original content
-    const content = await fs.readFile(absolutePath, 'utf-8');
-    return {
-      code: content,
-      rawMap: null,
-      localPath: localPaths.beautifiedPath,
-      localMapPath: localPaths.mapPath,
-      usedFallback: true,
-    };
-  }
-  
-  const code = codeFile.text;
-  const rawMap = JSON.parse(mapFile.text) as SourceMap;
-  const mapText = mapFile.text;
   
   const result: BeautifyResult = {
     code,
@@ -434,7 +460,9 @@ export async function ensureBeautified(
   };
   
   // Save to local directory (same directory as original file)
-  await saveToLocal(result, localPaths, mapText);
+  if (mapText) {
+    await saveToLocal(result, localPaths, mapText);
+  }
   
   return result;
 }
