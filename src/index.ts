@@ -159,7 +159,6 @@ export async function smartRead(
     // Beautify the file
     const beautifyResult = await ensureBeautified(absolutePath, {
       language: options?.language,
-      saveLocal: options?.saveLocal,
     });
     
     let code = beautifyResult.code;

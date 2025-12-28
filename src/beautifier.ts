@@ -1,11 +1,7 @@
 import * as esbuild from 'esbuild';
-import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as os from 'os';
 import { detectLanguage, getLanguageInfo, type SupportedLanguage } from './languageDetector.js';
-
-const TEMP_DIR = path.join(os.tmpdir(), 'smart-fs-mcp-cache');
 
 export interface SourceMap {
   version: number;
@@ -19,8 +15,6 @@ export interface SourceMap {
 export interface BeautifyOptions {
   /** Override auto-detected language */
   language?: SupportedLanguage;
-  /** Save beautified file locally (default: true for JS/TS) */
-  saveLocal?: boolean;
 }
 
 export interface BeautifyResult {
@@ -36,32 +30,6 @@ export interface BeautifyResult {
   /** Whether fallback mode was used */
   usedFallback: boolean;
 }
-
-/**
- * Ensure the cache directory exists
- */
-async function ensureCacheDir(): Promise<void> {
-  await fs.mkdir(TEMP_DIR, { recursive: true });
-}
-
-/**
- * Calculate cache key based on file path and modification time
- */
-function calculateCacheKey(originalPath: string, mtimeMs: number): string {
-  const fileKey = `${originalPath}-${mtimeMs}`;
-  return crypto.createHash('md5').update(fileKey).digest('hex');
-}
-
-/**
- * Get cache file paths for a given original file
- */
-function getCachePaths(originalPath: string, hash: string): { beautifiedPath: string; mapPath: string } {
-  const fileName = path.basename(originalPath, '.js');
-  const beautifiedPath = path.join(TEMP_DIR, `${fileName}.${hash}.beautified.js`);
-  const mapPath = `${beautifiedPath}.map`;
-  return { beautifiedPath, mapPath };
-}
-
 
 /**
  * Local paths result interface
@@ -91,25 +59,11 @@ export function getLocalPaths(originalPath: string): LocalPaths {
   const ext = path.extname(absolutePath);
   const baseName = path.basename(absolutePath, ext);
   
-  const beautifiedPath = path.join(dir, `${baseName}.beautified.js`);
+  const cacheDir = path.join(dir, '__smart_fs_cache__');
+  const beautifiedPath = path.join(cacheDir, `${baseName}.beautified.js`);
   const mapPath = `${beautifiedPath}.map`;
   
   return { beautifiedPath, mapPath };
-}
-
-/**
- * Check if cache exists and is valid (for temp directory cache)
- */
-async function isCacheValid(beautifiedPath: string, mapPath: string): Promise<boolean> {
-  try {
-    await Promise.all([
-      fs.access(beautifiedPath),
-      fs.access(mapPath)
-    ]);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -360,7 +314,7 @@ export function beautifyCode(
  * - Unknown: Return original (fallback mode)
  * 
  * @param originalPath - Original file path
- * @param options - Optional beautify options (language, saveLocal, etc.)
+ * @param options - Optional beautify options (language override)
  * @returns Beautified code and Source Map (null for non-JS/TS)
  */
 export async function ensureBeautified(
@@ -371,9 +325,8 @@ export async function ensureBeautified(
   const absolutePath = path.resolve(originalPath);
   
   // Check if file exists
-  let stats: Awaited<ReturnType<typeof fs.stat>>;
   try {
-    stats = await fs.stat(absolutePath);
+    await fs.stat(absolutePath);
   } catch {
     throw new Error(`File not found: ${originalPath}`);
   }
@@ -385,7 +338,7 @@ export async function ensureBeautified(
   
   const language = langInfo.language;
   
-  // Get local paths for local save/read
+  // Get local paths (same directory as original file)
   const localPaths = getLocalPaths(absolutePath);
   
   // Handle non-JS/TS languages (no caching, no source map)
@@ -403,7 +356,7 @@ export async function ensureBeautified(
   }
   
   // JS/TS processing with esbuild and caching
-  // Check local cache first
+  // Check local cache first (same directory as original file)
   const localCacheCheck = await isLocalCacheValid(absolutePath);
   if (localCacheCheck.isValid) {
     // Local cache hit - read from local files
@@ -424,35 +377,6 @@ export async function ensureBeautified(
     }
   }
   
-  // Ensure temp cache directory exists
-  await ensureCacheDir();
-  
-  // Calculate cache key for temp directory
-  const hash = calculateCacheKey(absolutePath, stats.mtimeMs);
-  const { beautifiedPath, mapPath } = getCachePaths(absolutePath, hash);
-  
-  // Check temp cache
-  if (await isCacheValid(beautifiedPath, mapPath)) {
-    // Temp cache hit - read from cache
-    const [code, mapContent] = await Promise.all([
-      fs.readFile(beautifiedPath, 'utf-8'),
-      fs.readFile(mapPath, 'utf-8')
-    ]);
-    
-    const result: BeautifyResult = {
-      code,
-      rawMap: JSON.parse(mapContent) as SourceMap,
-      localPath: localPaths.beautifiedPath,
-      localMapPath: localPaths.mapPath,
-      usedFallback: false,
-    };
-    
-    // Also save to local directory
-    await saveToLocal(result, localPaths, mapContent);
-    
-    return result;
-  }
-  
   // Cache miss - beautify with Esbuild
   let esbuildResult: esbuild.BuildResult;
   try {
@@ -469,7 +393,7 @@ export async function ensureBeautified(
       keepNames: true,
       treeShaking: false,
     });
-  } catch (err) {
+  } catch {
     // If esbuild fails, fall back to returning original content
     const content = await fs.readFile(absolutePath, 'utf-8');
     return {
@@ -501,12 +425,6 @@ export async function ensureBeautified(
   const rawMap = JSON.parse(mapFile.text) as SourceMap;
   const mapText = mapFile.text;
   
-  // Write to temp cache
-  await Promise.all([
-    fs.writeFile(beautifiedPath, code, 'utf-8'),
-    fs.writeFile(mapPath, mapText, 'utf-8')
-  ]);
-  
   const result: BeautifyResult = {
     code,
     rawMap,
@@ -515,7 +433,7 @@ export async function ensureBeautified(
     usedFallback: false,
   };
   
-  // Save to local directory
+  // Save to local directory (same directory as original file)
   await saveToLocal(result, localPaths, mapText);
   
   return result;
@@ -531,6 +449,10 @@ async function saveToLocal(
   mapText: string
 ): Promise<void> {
   try {
+    // Ensure cache directory exists
+    const cacheDir = path.dirname(localPaths.beautifiedPath);
+    await fs.mkdir(cacheDir, { recursive: true });
+    
     await Promise.all([
       fs.writeFile(localPaths.beautifiedPath, result.code, 'utf-8'),
       fs.writeFile(localPaths.mapPath, mapText, 'utf-8')
@@ -547,6 +469,6 @@ async function saveToLocal(
     } else {
       result.localSaveError = `Failed to save locally: ${error.message || String(err)}`;
     }
-    // Don't throw - the temp cache result is still valid
+    // Don't throw - the result is still valid
   }
 }
